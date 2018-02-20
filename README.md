@@ -107,6 +107,12 @@ To be sure the network interface is coming up:
 - Insert the line: `/sbin/ifdown --force eth0`
 - Insert the line: `/sbin/ifup --force eth0`
 
+Configure authorized keys and SSH server:
+
+- Add proper authorized_keys to /root/.ssh/authorized_keys
+- Change SSH-Port to 2201 in /etc/ssh/sshd_config
+- Set PasswordAuthentication to no
+
 Time for our first reboot.. fingers crossed!
 
 - `exit`
@@ -121,6 +127,7 @@ After a few seconds the dropbear ssh server is coming up on your system, connect
 - a busybox shell should come up
 - unlock your lvm drive with:
 - `/lib/cryptsetup/askpass "passphrase: " > /lib/cryptsetup/passfifo`
+- `exit`
 
 ## Sources:
 Special thanks to the people who wrote already this guides:
