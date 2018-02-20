@@ -49,7 +49,7 @@ We now rsync our installation into the new encrypted drives
 
 - `mkdir /oldroot/`
 - `mount /dev/mapper/vg0-root /mnt/`
-- `rsync -a /mnt/ /oldroot/` (this could take a while)
+- `rsync -avz /mnt/ /oldroot/` (this could take a while)
 - `umount /mnt/`
 
 Backup your old vg0 configuration to keep things simple and remove the old volume group:
@@ -81,7 +81,7 @@ Ok, the filesystem is missing, lets create it:
 Now we mount and copy our installation back on the new lvs:
 
 - `mount /dev/vg0/root /mnt/`
-- `rsync -a /oldroot/ /mnt/`
+- `rsync -avz /oldroot/ /mnt/`
 
 ### Some changes to your existing linux installation
 Lets mount some special filesystems for chroot usage:
