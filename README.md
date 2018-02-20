@@ -123,7 +123,7 @@ Time for our first reboot.. fingers crossed!
 
 After a few seconds the dropbear ssh server is coming up on your system, connect to it and unlock your system like this:
 
-- `ssh -i .ssh/dropbear root@<yourserverip>`
+- `ssh -P22 root@<yourserverip>`
 - a busybox shell should come up
 - unlock your lvm drive with:
 - `/lib/cryptsetup/askpass "passphrase: " > /lib/cryptsetup/passfifo`
