@@ -19,8 +19,11 @@ This guide *could* work at any other provider with a rescue system.
 - I choosed the following logical volumes on my system to keep it simple:
 
 ```
-lv-swap (10GB) swap
-lv-root (1000G) -> means remaining space ext4
+PART /boot ext3 512M
+PART lvm vg0 all
+
+LV vg0 root / ext4 1250G
+LV vg0 swap swap swap 10G
 ```
 
 - after you adjusted all parameters in the install config file, press F10 to install the ubuntu minimal system
@@ -28,7 +31,7 @@ lv-root (1000G) -> means remaining space ext4
 
 ### First steps on your fresh ubuntu installation
 
-- connect via ssh-key you choosed before for the rescue image (attention to the .ssh/known_hosts file..)
+- connect via ssh-key you choosed before for the rescue image or with password (attention to the .ssh/known_hosts file..)
 - install busybox and dropbear
 - `apt update && apt install busybox dropbear`
 - Edit your `/etc/initramfs-tools/initramfs.conf` and set `BUSYBOX=y`
