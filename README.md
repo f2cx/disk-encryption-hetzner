@@ -1,143 +1,97 @@
 ## disk-encryption-hetzner
 
-This should be a clean step-by-step guide how to setup a hetzner root server from the server auctions at hetzners "serverbörse" to get a fully encrypted software raid1 with lvm on top.
+### Hardware Setup
+- 2x HDD HWR
+- RAM ECC
 
-The goal of this guide is to have a server system that has encrypted drives and is remotely unlockable.
+### 1) Boot into the Rescue System
 
-This guide *could* work at any other provider with a rescue system.
-
-### Hardware setup
-"Dedicated Root Server SB36"
-- Intel Xeon E3-1246V3
-- 2x HDD SATA 2,0 TB Enterprise 
-- 4x RAM 8192 MB DDR3
-
-### First steps in rescue image
-
-- Boot to the rescue system via hetzners server management page
-- install a minimal Ubuntu 16.04 LTS with hetzners "installimage" skript (https://wiki.hetzner.de/index.php/Installimage)
-- I choosed the following logical volumes on my system to keep it simple:
+- Boot to the rescue system via hetzners server management page using SSH Key
+- install a minimal Ubuntu 18.04 LTS with hetzners "installimage"
 
 ```
-PART /boot ext3 512M
+#SET HOSNTAME: XXX
+
+PART /boot ext3 1G
 PART lvm vg0 all
 
 LV vg0 root / ext4 1250G
-LV vg0 swap swap swap 10G
+LV vg0 storage /storage ext4 1250G
+LV vg0 swap swap swap 20G
 ```
-
 - after you adjusted all parameters in the install config file, press F10 to install the ubuntu minimal system
 - reboot and ssh into your fresh installed ubuntu
 
-### First steps on your fresh ubuntu installation
+### 2) Boot into the Ubuntu System
 
-- connect via ssh-key you choosed before for the rescue image or with password (attention to the .ssh/known_hosts file..)
-- install busybox and dropbear
-- `apt update && apt install busybox dropbear`
-- Edit your `/etc/initramfs-tools/initramfs.conf` and set `BUSYBOX=y`
-- Create the needed folders for dropbear keys
-- `mkdir -p /etc/initramfs-tools/root/.ssh/`
-- `vi /etc/initramfs-tools/root/.ssh/authorized_keys`
-- Paste your pub ssh-key in there
-- reboot again to the rescue system via the hetzner webinterface
+```
+apt update && apt-get dist-upgrade && apt install busybox dropbear
+sed -i 's/BUSYBOX=auto/BUSYBOX=y/g' /etc/initramfs-tools/initramfs.conf
+mkdir -p /etc/initramfs-tools/root/.ssh/
+cp /root/.ssh/authorized_keys /etc/initramfs-tools/root/.ssh/
+```
 
-### Rescue image the second
-*This steps should be done after the initial md replication*
-(get the progress with `cat /proc/mdstat`)
+### 3) Boot again into the Rescue System
 
-We now rsync our installation into the new encrypted drives 
+```
+screen
+mkdir /oldroot/ && mount /dev/mapper/vg0-root /mnt/ && rsync -avz /mnt/ /oldroot/
+umount /mnt/
+```
 
-- `mkdir /oldroot/`
-- `mount /dev/mapper/vg0-root /mnt/`
-- `rsync -avz /mnt/ /oldroot/` (this could take a while)
-- `umount /mnt/`
+```
+vgcfgbackup vg0 -f vg0.freespace
+vgremove vg0
+CRYPTPASSWORD=`pwgen 64 1`
+echo "Please save the encryption key: $CRYPTPASSWORD"
+cryptsetup --cipher aes-xts-plain64 --key-size 512 --hash sha256 --iter-time 6000 luksFormat /dev/sda2
+cryptsetup luksOpen /dev/sda2 cryptroot
+pvcreate /dev/mapper/cryptroot
+```
 
-Backup your old vg0 configuration to keep things simple and remove the old volume group:
+```
+UUID=`blkid /dev/mapper/cryptroot | awk -F'"' '{print $2}'`
+cp vg0.freespace /etc/lvm/backup/vg0
+sed -i "25 c\                        id = \"$UUID\"" /etc/lvm/backup/vg0
+sed -i "26 c\                        device = \"/dev/mapper/cryptroot\"        # Hint only" /etc/lvm/backup/vg0
+vgcfgrestore vg0
+vgchange -a y vg0
+mkfs.ext4 /dev/vg0/root
+mkswap /dev/vg0/swap
+mount /dev/vg0/root /mnt/
+rsync -avz /oldroot/ /mnt/
+mount /dev/sda1 /mnt/boot
+mount --bind /dev /mnt/dev
+mount --bind /sys /mnt/sys
+mount --bind /proc /mnt/proc
+chroot /mnt
+```
 
-- `vgcfgbackup vg0 -f vg0.freespace`
-- `vgremove vg0`
+```
+echo "cryptroot /dev/sda2 none luks" > /etc/crypttab
+update-initramfs -u
+update-grub
+grub-install /dev/sda
 
-After this, we encrypt our raid 1 now.
-- `cryptsetup --cipher aes-xts-plain64 --key-size 512 --hash sha256 --iter-time 6000 luksFormat /dev/md1`
-(!!!Choose a strong passphrase (something like `pwgen 64 1`)!!!)
-- `cryptsetup luksOpen /dev/md1 cryptroot`
-- now create the physical volume on your mapper:
-- `pvcreate /dev/mapper/cryptroot`
+echo '#!/bin/sh -e' >> /etc/rc.local
+echo "/sbin/ifdown --force eth0" >> /etc/rc.local
+echo "/sbin/ifup --force eth0" >> /etc/rc.local
+echo "exit 0" >> /etc/rc.local
 
-We have now to edit your vg0 backup:
-- `blkid /dev/mapper/cryptroot`
-   Results in:  `/dev/mapper/cryptroot: UUID="HEZqC9-zqfG-HTFC-PK1b-Qd2I-YxVa-QJt7xQ"`
-- `cp vg0.freespace /etc/lvm/backup/vg0`
-Now edit the `id` (UUID from above) and `device` (/dev/mapper/cryptroot) property in the file according to our installation (for the physical volume)
-- `vi /etc/lvm/backup/vg0`
-- Restore the vgconfig: `vgcfgrestore vg0`
-- `vgchange -a y vg0`
+sed -i 's/#Port 22/Port 2201/g' /etc/ssh/sshd_config
+sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config
+exit
+```
 
-Ok, the filesystem is missing, lets create it:
+```
+umount /mnt/boot /mnt/proc /mnt/sys /mnt/dev
+umount /mnt
+sync
+reboot
+```
 
-- `mkfs.ext4 /dev/vg0/root`
-- `mkswap /dev/vg0/swap`
-
-Now we mount and copy our installation back on the new lvs:
-
-- `mount /dev/vg0/root /mnt/`
-- `rsync -avz /oldroot/ /mnt/`
-
-### Some changes to your existing linux installation
-Lets mount some special filesystems for chroot usage:
-- `mount /dev/md0 /mnt/boot`
-- `mount --bind /dev /mnt/dev`
-- `mount --bind /sys /mnt/sys`
-- `mount --bind /proc /mnt/proc`
-- `chroot /mnt`
-
-To let the system know there is a new crypto device we need to edit the cryptab(/etc/crypttab):
-- `vi /etc/crypttab`
-- copy the following line in there: `cryptroot /dev/md1 none luks`
-
-Regenerate the initramfs:
-- `update-initramfs -u`
-- `update-grub`
-- `grub-install /dev/sda`
-- `grub-install /dev/sdb`
-
-To be sure the network interface is coming up:
-
-- `vi /etc/rc.local`
-- Insert the line: `/sbin/ifdown --force eth0`
-- Insert the line: `/sbin/ifup --force eth0`
-
-Configure authorized keys and SSH server:
-
-- Add proper authorized_keys to /root/.ssh/authorized_keys
-- Change SSH-Port to 2201 in /etc/ssh/sshd_config
-- Set PasswordAuthentication to no
-
-Time for our first reboot.. fingers crossed!
-
-- `exit`
-- `umount /mnt/boot /mnt/proc /mnt/sys /mnt/dev`
-- `umount /mnt`
-- `sync`
-- `reboot`
-
-After a few seconds the dropbear ssh server is coming up on your system, connect to it and unlock your system like this:
-
-- `ssh -P22 root@<yourserverip>`
-- a busybox shell should come up
-- unlock your lvm drive with:
-- `/lib/cryptsetup/askpass "passphrase: " > /lib/cryptsetup/passfifo`
-- `exit`
-
-## Sources:
-Special thanks to the people who wrote already this guides:
-
-- http://notes.sudo.is/RemoteDiskEncryption
-- https://wiki.archlinux.org/index.php/Dm-crypt/Encrypting_an_entire_system
-
-## Contribution
-
-- PRs are very welcome or open an issue if something not works for you as described
-
-## Comments
-- Tested this guide on 25.10.2017 on my own hetzner system, its working pretty good :-)
+```
+ssh -P22 root@<yourserverip>
+/lib/cryptsetup/askpass "passphrase: " > /lib/cryptsetup/passfifo
+exit
+```
