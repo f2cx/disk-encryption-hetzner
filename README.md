@@ -55,6 +55,7 @@ sed -i "25 c\                        id = \"$UUID\"" /etc/lvm/backup/vg0
 sed -i "26 c\                        device = \"/dev/mapper/cryptroot\"        # Hint only" /etc/lvm/backup/vg0
 vgcfgrestore vg0
 vgchange -a y vg0
+mkfs.ext4 /dev/vg0/storage
 mkfs.ext4 /dev/vg0/root
 mkswap /dev/vg0/swap
 mount /dev/vg0/root /mnt/
