@@ -27,8 +27,7 @@ LV vg0 swap swap swap 20G
 ```
 apt update && apt-get dist-upgrade && apt install busybox dropbear
 sed -i 's/BUSYBOX=auto/BUSYBOX=y/g' /etc/initramfs-tools/initramfs.conf
-mkdir -p /etc/initramfs-tools/root/.ssh/
-cp /root/.ssh/authorized_keys /etc/initramfs-tools/root/.ssh/
+cp /root/.ssh/authorized_keys /etc/dropbear-initramfs/
 ```
 
 ### 3) Boot again into the Rescue System
